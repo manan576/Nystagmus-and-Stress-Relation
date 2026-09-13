@@ -1,0 +1,1 @@
+Started with data collection again , 60 s window too long to detect immediate stress

@@ -21,3 +21,7 @@ oscillation_log.csv
 # OS
 Thumbs.db
 .DS_Store
+
+# Test & Binary Artifacts
+*.dll
+test_h264.mp4

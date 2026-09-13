@@ -46,7 +46,7 @@ def save_log(header, rows):
         writer.writerows(rows)
 
 
-def play_video_loop(video_path):
+def play_video_loop(video_path, hrv_info=None):
     """Play a video on loop until the user presses a key. Returns the key."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -68,9 +68,19 @@ def play_video_loop(video_path):
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
 
+        h, w = frame.shape[:2]
+
         # Add instruction overlay
         cv2.putText(frame, "Y=True  N=False  S=Skip  Q=Quit",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+
+        # Add HRV data overlay if available
+        if hrv_info:
+            y_pos = h - 50
+            for line in reversed(hrv_info):
+                cv2.putText(frame, line, (10, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+                y_pos -= 35
 
         cv2.imshow("Validation Review", frame)
 
@@ -139,7 +149,29 @@ def main():
             print(f"  ⚠️  Video file missing, skipping.")
             continue
 
-        result = play_video_loop(video_path)
+        # Build HRV info overlay lines from CSV data
+        hrv_info = []
+        def safe_get(col_name):
+            try:
+                idx = header.index(col_name)
+                val = row[idx].strip() if idx < len(row) else ""
+                return val if val else "--"
+            except (ValueError, IndexError):
+                return "--"
+
+        rmssd_15 = safe_get("RMSSD_15s")
+        rmssd_30 = safe_get("RMSSD_30s")
+        rmssd_60 = safe_get("RMSSD_60s")
+        bpm = safe_get("BPM")
+        quality = safe_get("HRV_Quality")
+
+        hrv_info.append(f"RMSSD: 15s={rmssd_15}  30s={rmssd_30}  60s={rmssd_60} ms")
+        hrv_info.append(f"BPM: {bpm}  |  Quality: {quality}")
+
+        # Also print to console
+        print(f"  HRV: RMSSD 15s={rmssd_15} 30s={rmssd_30} 60s={rmssd_60}ms | BPM={bpm} | {quality}")
+
+        result = play_video_loop(video_path, hrv_info=hrv_info)
 
         if result == 'QUIT':
             print("\n  Quitting review session.")

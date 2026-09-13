@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeuroTrial Clinician Portal — Decentralized Clinical Trials</title>
+  <meta name="description"
+    content="Worldwide clinician access portal for reviewing decentralized patient nystagmus oscillations, baseline HRV, and Bedrock AI notes.">
+
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+  <div class="app-container">
+
+    <!-- Top Navigation Bar -->
+    <header class="clinical-navbar">
+      <!-- Left: Clean Brand Section -->
+      <div class="brand-section">
+        <div class="brand-titles">
+          <h1>NeuroTrial Clinician Portal</h1>
+          <span class="brand-subtitle">Decentralized Telemetry & Video Validation Platform</span>
+        </div>
+      </div>
+
+      <!-- Center & Right Controls: Left-to-Right Flow -->
+      <div class="nav-controls">
+        <!-- 1. Doctor Name, Role Badge, Switch Role (RBAC) -->
+        <div id="clinician-auth-widget">
+          <!-- Injected via AuthManager -->
+        </div>
+
+        <!-- 2. Patient Dropdown Selector -->
+        <div class="patient-picker">
+          <div class="patient-avatar" id="nav-avatar">M</div>
+          <select id="patient-select" class="patient-dropdown" title="Select Clinical Patient">
+            <option value="patient_001">Manan B. (Infantile)</option>
+            <option value="patient_002">Sarah K. (Acquired)</option>
+            <option value="patient_003">Rajesh M. (Pediatric)</option>
+          </select>
+        </div>
+
+        <!-- 3. Register New Patient Button -->
+        <button id="btn-open-register-modal" class="btn-register-patient" type="button"
+          onclick="openRegisterPatientModal()">
+          <span>+</span> Register New Patient
+        </button>
+
+        <!-- 4. Instruction / Clinical Protocol Guide Popover -->
+        <div class="nav-guide-wrapper">
+          <button id="btn-page-guide" class="nav-guide-btn" type="button" aria-label="Clinician Portal Guide & Triage Instructions" title="Instructions & Guide">
+            <span class="guide-icon">?</span>
+            <span class="guide-text">Instructions</span>
+          </button>
+          
+          <div class="nav-guide-popover" id="nav-guide-popover">
+            <div class="guide-popover-header">
+              <span class="guide-badge">CLINICIAN TRIAGE GUIDE</span>
+              <h4 class="guide-title">Clinician Portal Overview & Instructions</h4>
+              <p class="guide-subtitle">Clinical workflows for video adjudication, HRV telemetry, & AI notes</p>
+            </div>
+            <div class="guide-steps-list">
+              <div class="guide-step-item">
+                <div class="guide-step-num">1</div>
+                <div class="guide-step-content">
+                  <strong>Patient Cohort Selection:</strong> Use the top patient dropdown to scope telemetry data and clinical history to a specific trial participant.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">2</div>
+                <div class="guide-step-content">
+                  <strong>Video Validation Queue:</strong> Review rolling 10s video episodes triggered by patient head oscillation spikes synchronized with HRV timestamps.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">3</div>
+                <div class="guide-step-content">
+                  <strong>Adjudicate True / False Positives:</strong> Click <em>Confirm True Event</em> or <em>Flag Artifact</em> to label clips and update trial validation statistics.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">4</div>
+                <div class="guide-step-content">
+                  <strong>HRV & Autonomic Trend Analysis:</strong> Inspect longitudinal RMSSD, LF/HF balance, and tremor amplitude metrics across baseline vs stress test states.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">5</div>
+                <div class="guide-step-content">
+                  <strong>Bedrock Generative AI Notes:</strong> Click <em>Generate Clinical Note</em> to synthesize AWS Bedrock LLM summaries for electronic health records.
+                </div>
+              </div>
+            </div>
+            <div class="guide-footer-hint">
+              <span><strong>Tip:</strong> Click any video thumbnail to open full synchronous clip player & telemetry timeline</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Extreme Right: Patient Live Studio Link -->
+        <a href="patient.html" class="nav-portal-link" id="btn-patient-studio-link">
+          Patient Live Studio ↗
+        </a>
+      </div>
+    </header>
+
+    <!-- Patient Profile Header -->
+    <section class="patient-info-strip">
+      <div class="patient-profile-info">
+        <div class="patient-profile-avatar" id="profile-avatar">M</div>
+        <div class="patient-name-block">
+          <h2 id="patient-name-display">Manan B.</h2>
+          <div class="patient-meta-tags">
+            <span class="meta-pill" id="patient-diagnosis-display">Infantile Nystagmus Syndrome (INS)</span>
+            <span class="meta-pill" id="patient-demographics-display">22 yrs • Male</span>
+            <span class="meta-pill" id="patient-sessions-count-display">3 Clinical Sessions</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align: right;">
+        <span style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:600;">Overall
+          Telemetry Status</span>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+          <span style="width:8px; height:8px; border-radius:50%; background:#059669; display:inline-block;"></span>
+          <span style="font-size:0.85rem; font-weight:600; color:#059669;" id="status-live-indicator">Active Telemetry
+            Connected</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW CONTAINER 1: CLINICIAN REVIEW PORTAL -->
+    <div id="clinician-portal-view" class="view-panel active">
+
+      <!-- Section 1: Video Validation Queue (Videos to be Validated for Patient) -->
+      <section class="validation-queue-panel" id="validation-queue-section">
+        <div class="queue-header">
+          <div class="queue-title">
+            <span>Video Recordings Awaiting Clinician Validation</span>
+            <span class="queue-badge" id="queue-pending-count">2 Pending</span>
+          </div>
+          <span style="font-size:0.8rem; color:var(--text-muted);">
+            Review 10s video clips to confirm true head nodding vs. motion artifact
+          </span>
+        </div>
+
+        <div class="queue-cards-grid" id="queue-cards-container">
+          <!-- Injected via JavaScript -->
+        </div>
+      </section>
+
+      <!-- Section 2: Clinical Monitoring Sessions -->
+      <section class="sessions-section">
+
+        <!-- Session Tabs Bar -->
+        <div class="session-tabs-bar" id="session-tabs-container">
+          <!-- Injected via JavaScript -->
+        </div>
+
+        <!-- Active Session Summary Banner -->
+        <div class="active-session-banner">
+          <div class="sess-metric-col">
+            <div class="sess-metric-label">Active Session Details</div>
+            <h3
+              style="font-family:'Outfit'; font-size:1.05rem; font-weight:700; color:var(--text-primary); margin-top:2px;"
+              id="sess-banner-name">
+              Session 1 — Baseline & Workday Stress
+            </h3>
+            <p style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;" id="sess-banner-date">
+              Sept 8, 2026 • 10:00 AM
+            </p>
+          </div>
+
+          <div class="sess-metric-col">
+            <div class="sess-metric-label">Session Baseline RMSSD (Start 5 min)</div>
+            <div class="sess-baseline-display">
+              <span id="sess-banner-baseline">44.5</span>
+              <span class="sess-baseline-unit">ms</span>
+            </div>
+          </div>
+
+          <div class="sess-metric-col">
+            <div class="sess-metric-label">Total Oscillations</div>
+            <div
+              style="font-family:'JetBrains Mono'; font-size:1.4rem; font-weight:700; color:var(--text-primary); margin-top:4px;"
+              id="sess-banner-total-osc">
+              6
+            </div>
+          </div>
+
+          <div class="sess-metric-col">
+            <div class="sess-metric-label">Verified True Positives</div>
+            <div
+              style="font-family:'JetBrains Mono'; font-size:1.4rem; font-weight:700; color:var(--baseline-green); margin-top:4px;"
+              id="sess-banner-tp-osc">
+              3 TP
+            </div>
+          </div>
+
+          <div class="sess-metric-col"
+            style="display:flex; flex-direction:column; justify-content:center; align-items:flex-end;">
+            <button id="btn-generate-ai-summary" class="btn-review-clip"
+              style="background:#6366f1; color:white; border:none; padding:8px 14px; font-size:0.8rem; font-weight:600; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(99,102,241,0.25);">
+              Generate Bedrock AI Note
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 3: Session HRV & Oscillation Graph -->
+        <div class="chart-card">
+          <div class="chart-header-row">
+            <div class="chart-title-group">
+              <h3>Session Baseline vs. Verified True Positive (TP) RMSSD Graph</h3>
+              <p>Comparing calibrated resting baseline (start of session) against RMSSD at Verified True Positive
+                oscillation events</p>
+            </div>
+
+            <div class="chart-legend-box">
+              <div><span class="legend-dot" style="background:#059669;"></span> Session Baseline</div>
+              <div><span class="legend-dot" style="background:#e11d48;"></span> Verified True Positive (TP) RMSSD</div>
+            </div>
+          </div>
+
+          <div class="chart-wrapper">
+            <canvas id="session-chart-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Section 4: Session Oscillation Log Table -->
+        <div class="table-card">
+          <div class="table-header-row">
+            <h3>Recorded Oscillations in this Session</h3>
+            <span style="font-size:0.8rem; color:var(--text-muted);" id="session-table-count">6 recorded events</span>
+          </div>
+
+          <table class="clinical-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Session Baseline RMSSD</th>
+                <th>Oscillation RMSSD (60s)</th>
+                <th>Stress Drop %</th>
+                <th>Verification Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="session-table-body">
+              <!-- Injected via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+
+      </section>
+
+    </div> <!-- /#clinician-portal-view -->
+
+  </div> <!-- /.app-container -->
+
+  <!-- Video Validation Modal -->
+  <div id="video-modal-backdrop" class="modal-backdrop">
+    <div class="validation-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Clinician Video Validation & Telemetry Review</h3>
+          <p id="modal-timestamp-label"
+            style="font-size:0.78rem; color:var(--text-muted); font-family:'JetBrains Mono';"></p>
+        </div>
+        <button id="btn-close-modal" class="btn-close-modal" type="button" onclick="closeValidationModal()"
+          title="Close dialog" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="video-container-box"
+        style="position:relative; width:100%; height:360px; background:#0b1120; border-radius:8px 8px 0 0; overflow:hidden;">
+        <!-- Real Patient Webcam / MP4 Video Recording Player -->
+        <video id="validation-video-player" playsinline muted loop
+          style="width:100%; height:100%; object-fit:cover; display:block; background:#000;"></video>
+
+        <!-- Dynamic Clinical Video Replay Canvas (Fallback) -->
+        <canvas id="validation-replay-canvas" width="640" height="360"
+          style="width:100%; height:100%; object-fit:cover; display:none;"></canvas>
+
+        <!-- On-Screen Telemetry HUD -->
+        <div class="video-telemetry-hud">
+          <div class="hud-item">
+            <span>Session Baseline</span>
+            <span id="hud-baseline-val" style="color:#10b981;">44.5 ms</span>
+          </div>
+          <div class="hud-item">
+            <span>Incident RMSSD</span>
+            <span id="hud-incident-val" style="color:#f43f5e;">18.2 ms</span>
+          </div>
+          <div class="hud-item">
+            <span>Vagal Stress Drop</span>
+            <span id="hud-drop-val" style="color:#f43f5e;">-59.1%</span>
+          </div>
+          <div class="hud-item">
+            <span>Heart Rate</span>
+            <span id="hud-bpm-val" style="color:#38bdf8;">91 BPM</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Playback Scrubber & Control Bar -->
+      <div class="replay-controls-bar"
+        style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:#1e293b; color:#cbd5e1; border-radius:0 0 8px 8px; font-size:0.8rem; border-top:1px solid #334155;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="btn-replay-playpause"
+            style="background:#334155; border:none; color:#38bdf8; font-size:0.75rem; font-weight:700; cursor:pointer; padding:4px 8px; border-radius:4px;"
+            title="Play / Pause">PAUSE</button>
+          <button id="btn-replay-restart"
+            style="background:#334155; border:none; color:#cbd5e1; font-size:0.75rem; font-weight:700; cursor:pointer; padding:4px 8px; border-radius:4px;"
+            title="Restart Episode">REPLAY</button>
+          <span id="replay-timecode"
+            style="font-family:'JetBrains Mono'; font-weight:600; color:#f8fafc; font-size:0.75rem;">00:00.0 /
+            00:10.0</span>
+        </div>
+
+        <div style="flex:1; margin:0 14px; display:flex; align-items:center;">
+          <input type="range" id="replay-scrubber" min="0" max="100" value="0"
+            style="width:100%; accent-color:#0284c7; cursor:pointer; height:4px;">
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="status-pill status-tp" style="font-size:0.68rem; padding:2px 8px; font-weight:600;">1080p Patient
+            Video Recording</span>
+        </div>
+      </div>
+
+      <div class="modal-action-footer">
+        <span style="font-size:0.8rem; color:var(--text-secondary); max-width:280px;">
+          Does this 10-second clip represent genuine involuntary head nodding?
+        </span>
+
+        <div class="triage-buttons">
+          <button id="btn-modal-verify-tp" class="btn-verify-tp">
+            Verify True Positive
+          </button>
+          <button id="btn-modal-dismiss-fp" class="btn-dismiss-fp">
+            Dismiss as False Positive
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Patient Registration Modal -->
+  <div id="register-patient-modal-backdrop" class="modal-backdrop">
+    <div class="registration-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Register New Patient Account</h3>
+          <p style="font-size:0.78rem; color:var(--text-muted);">Enter patient clinical details to initiate baseline
+            session</p>
+        </div>
+        <button id="btn-close-register-modal" class="btn-close-modal" type="button"
+          onclick="closeRegisterPatientModal()" title="Close dialog" aria-label="Close">&times;</button>
+      </div>
+
+      <form id="register-patient-form" class="registration-form-body">
+        <div class="form-group">
+          <label for="new-patient-name">Patient Full Name *</label>
+          <input type="text" id="new-patient-name" class="form-input" placeholder="e.g., Alex Morgan" required>
+        </div>
+
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label for="new-patient-age">Age (Years) *</label>
+            <input type="number" id="new-patient-age" class="form-input" placeholder="e.g., 24" min="1" max="120"
+              required>
+          </div>
+
+          <div class="form-group">
+            <label for="new-patient-gender">Gender *</label>
+            <select id="new-patient-gender" class="form-select" required>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Non-Binary">Non-Binary</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="new-patient-diagnosis">Diagnosis / Condition *</label>
+          <select id="new-patient-diagnosis" class="form-select" required>
+            <option value="Infantile Nystagmus Syndrome (INS)">Infantile Nystagmus Syndrome (INS)</option>
+            <option value="Acquired Oscillopsia (Vestibular)">Acquired Oscillopsia (Vestibular)</option>
+            <option value="Pediatric Jerk Nystagmus">Pediatric Jerk Nystagmus</option>
+            <option value="Downbeat Nystagmus">Downbeat Nystagmus</option>
+            <option value="Congenital Nystagmus">Congenital Nystagmus</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="new-session-name">Initial Session Name</label>
+          <input type="text" id="new-session-name" class="form-input"
+            placeholder="Session 1 — Initial Baseline Calibration" value="Session 1 — Initial Baseline Calibration">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+          <button type="button" id="btn-cancel-register" class="btn-dismiss-fp"
+            style="color:var(--text-secondary); border-color:var(--border-color);"
+            onclick="closeRegisterPatientModal()">Cancel</button>
+          <button type="submit" class="btn-verify-tp" style="background:var(--clinical-blue);">Create Patient & Start
+            Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bedrock AI Clinical Note Modal -->
+  <div id="ai-modal-backdrop" class="modal-backdrop">
+    <div class="validation-modal-card" style="max-width:680px; width:92%;">
+      <div class="modal-header">
+        <div>
+          <h3>Amazon Bedrock AI Clinical Note</h3>
+          <p id="ai-modal-subtitle" style="font-size:0.78rem; color:var(--text-muted);"></p>
+        </div>
+        <button id="btn-close-ai-modal" class="btn-close-modal" type="button" onclick="closeBedrockAiModal()"
+          title="Close dialog" aria-label="Close">&times;</button>
+      </div>
+      <div id="ai-modal-content"
+        style="padding:20px; font-size:0.88rem; line-height:1.6; color:var(--text-primary); max-height:460px; overflow-y:auto; background:var(--card-bg);">
+        <!-- Injected via JS -->
+      </div>
+      <div class="modal-action-footer" style="justify-content:flex-end;">
+        <button id="btn-copy-ai-note" class="btn-verify-tp"
+          style="font-size:0.8rem; padding:8px 16px; background:#6366f1;">
+          Copy Clinical Note
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Modules -->
+  <script src="js/auth_manager.js"></script>
+  <script src="js/sample_data.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/web_tracker.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+
+</html>

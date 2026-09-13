@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeuroTrial Patient Studio — Decentralized Clinical Trial Telemetry</title>
+  <meta name="description"
+    content="Zero-install in-browser clinical trial recording studio for Nystagmus & Movement Disorder patients on AWS.">
+
+  <!-- MediaPipe Face Mesh CDN for precise nose tip tracking -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+
+  <div class="app-container">
+
+    <!-- Top Navigation Bar -->
+    <header class="clinical-navbar">
+      <!-- Left: Clean Brand Section -->
+      <div class="brand-section">
+        <div class="brand-titles">
+          <h1>NeuroTrial Patient Studio</h1>
+          <span class="brand-subtitle">Decentralized Clinical Trial Assessment & Telemetry</span>
+        </div>
+      </div>
+
+      <!-- Center & Right Controls: Left-to-Right Flow -->
+      <div class="nav-controls">
+        <!-- 1. Patient Name, Role Badge, Switch Role (RBAC) -->
+        <div id="patient-auth-widget">
+          <!-- Injected via AuthManager -->
+        </div>
+
+        <!-- 2. Patient Dropdown (Scoped) -->
+        <div class="patient-picker">
+          <div class="patient-avatar" id="nav-avatar">M</div>
+          <select id="patient-select" class="patient-dropdown" title="Select Patient Profile">
+            <option value="patient_001">Manan B. (Infantile)</option>
+            <option value="patient_002">Sarah K. (Acquired)</option>
+            <option value="patient_003">Rajesh M. (Pediatric)</option>
+          </select>
+        </div>
+
+        <!-- 3. Register New Patient Button -->
+        <button id="btn-open-register-modal" class="btn-register-patient" type="button"
+          onclick="openRegisterPatientModal()">
+          <span>+</span> Register New Patient
+        </button>
+
+        <!-- 4. Instruction / Clinical Protocol Guide Popover -->
+        <div class="nav-guide-wrapper">
+          <button id="btn-page-guide" class="nav-guide-btn" type="button" aria-label="Page Instructions & Clinical Protocol Guide" title="Instructions & Guide">
+            <span class="guide-icon">?</span>
+            <span class="guide-text">Instructions</span>
+          </button>
+          
+          <div class="nav-guide-popover" id="nav-guide-popover">
+            <div class="guide-popover-header">
+              <span class="guide-badge">PATIENT STUDIO GUIDE</span>
+              <h4 class="guide-title">How to Use the Patient Studio</h4>
+              <p class="guide-subtitle">Step-by-step clinical protocol for recording trial telemetry</p>
+            </div>
+            <div class="guide-steps-list">
+              <div class="guide-step-item">
+                <div class="guide-step-num">1</div>
+                <div class="guide-step-content">
+                  <strong>Connect Telemetry:</strong> Pair your Polar H9 chest strap via Web Bluetooth, or start the simulated stream for testing.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">2</div>
+                <div class="guide-step-content">
+                  <strong>Start New Session:</strong> Click <em>+ Start New Session</em>. Sit quietly for the 5-minute baseline calibration (calculates resting median RMSSD).
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">3</div>
+                <div class="guide-step-content">
+                  <strong>Automatic Video Capture:</strong> When a head oscillation occurs, a 10s video (5s pre + 5s post) is recorded and securely saved.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">4</div>
+                <div class="guide-step-content">
+                  <strong>Neuro-Cognitive Stress Test:</strong> Take the 60s Stroop test (hotkeys 1-4) to measure vagal withdrawal and tremor worsening.
+                </div>
+              </div>
+              <div class="guide-step-item">
+                <div class="guide-step-num">5</div>
+                <div class="guide-step-content">
+                  <strong>Finalize Session:</strong> Click <em>End Active Session</em> to disconnect hardware, lock data, and sync to the clinician portal.
+                </div>
+              </div>
+            </div>
+            <div class="guide-footer-hint">
+              <span><strong>Hotkeys:</strong> [1] Red • [2] Blue • [3] Green • [4] Yellow &nbsp;|&nbsp; [Esc] Close dialogs</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Extreme Right: Clinician Portal Link -->
+        <a href="index.html" class="nav-portal-link" id="btn-clinician-portal-link">
+          Clinician Portal ↗
+        </a>
+      </div>
+    </header>
+
+    <!-- Patient Profile Header -->
+    <section class="patient-info-strip">
+      <!-- Left: Patient Avatar & Demographics -->
+      <div class="patient-profile-info">
+        <div class="patient-profile-avatar" id="profile-avatar">M</div>
+        <div class="patient-name-block">
+          <h2 id="patient-name-display">Manan B.</h2>
+          <div class="patient-meta-tags">
+            <span class="meta-pill" id="patient-diagnosis-display">Infantile Nystagmus Syndrome (INS)</span>
+            <span class="meta-pill" id="patient-demographics-display">22 yrs • Male</span>
+            <span class="meta-pill" id="patient-sessions-count-display">3 Clinical Sessions</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Active Session Telemetry Info / Status (Shown only when a session is ACTIVE) -->
+      <div id="patient-session-center-info" class="patient-session-center-info" style="display:none; text-align: center; min-width: 200px;">
+        <span id="session-header-label" style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:600; letter-spacing:0.3px;">Active Recording Session</span>
+        <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:2px;">
+          <span id="session-status-dot"
+            style="width:8px; height:8px; border-radius:50%; background:#0284c7; display:inline-block; flex-shrink:0;"></span>
+          <span style="font-size:0.88rem; font-weight:600; color:#0284c7; white-space:nowrap;" id="active-session-title">Session 1 — Baseline & Workday Stress</span>
+          <span id="session-status-badge" class="status-pill status-tp"
+            style="font-size:0.7rem; padding:2px 6px; display:inline-flex; background:#ecfdf5; color:#059669;">Active</span>
+        </div>
+      </div>
+
+      <!-- Right: Session Actions (Start New Session / End Session) -->
+      <div class="patient-session-right-controls">
+        <button id="btn-open-start-session-modal" class="btn-session-action-primary" type="button"
+          onclick="openStartSessionModal()">
+          <span>+</span> Start New Session
+        </button>
+        <button id="btn-end-active-session" class="btn-session-action-danger" type="button"
+          onclick="openEndSessionModal()">
+          End Active Session
+        </button>
+      </div>
+    </section>
+
+    <!-- Patient Assessment Studio Grid -->
+    <div class="patient-studio-view active" style="display:block;">
+
+      <!-- Incident Alert Banner -->
+      <div id="studio-incident-alert" class="studio-incident-alert-banner">
+        <!-- Injected via JS -->
+      </div>
+
+      <!-- Telemetry Required Warning Prompt Banner (When oscillation occurs but BLE/Sim is disconnected) -->
+      <div id="studio-telemetry-required-prompt"
+        style="display:none; margin-bottom:14px; padding:14px 18px; background:#fff1f2; border:1.5px solid #f43f5e; border-radius:10px; align-items:flex-start; justify-content:space-between; gap:14px; box-shadow:0 4px 12px rgba(244, 63, 94, 0.12); animation:modalPop 0.25s ease;">
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <div style="width:12px; height:12px; border-radius:50%; background:#e11d48; margin-top:4px; flex-shrink:0;">
+          </div>
+          <div>
+            <strong style="font-size:0.92rem; color:#9f1239; display:block;">Live Telemetry Required — Video Recording
+              Inhibited</strong>
+            <p style="font-size:0.82rem; color:#be123c; margin-top:3px; line-height:1.45;">
+              A head oscillation pattern was detected, but <strong>no video was recorded</strong> because the Polar H9
+              chest strap is disconnected and simulation is stopped. Clinical trial protocols require simultaneous heart
+              rate variability telemetry. Please connect your Polar H9 strap or start the simulated stream.
+            </p>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-shrink:0; margin-top:2px;">
+          <button id="btn-prompt-connect-ble" class="btn-verify-tp"
+            style="font-size:0.78rem; padding:8px 12px; background:#0284c7; white-space:nowrap;">
+            Connect Polar H9
+          </button>
+          <button id="btn-prompt-start-sim" class="btn-dismiss-fp"
+            style="font-size:0.78rem; padding:8px 12px; background:#ffffff; color:#0284c7; border:1px solid #0284c7; font-weight:600; white-space:nowrap;">
+            Start Simulation
+          </button>
+        </div>
+      </div>
+
+      <!-- Bluetooth Disconnection Notification Banner -->
+      <div id="studio-ble-disconnect-alert"
+        style="display:none; margin-bottom:14px; padding:12px 18px; background:#fffbeb; border:1.5px solid #f59e0b; border-radius:10px; align-items:center; justify-content:space-between; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:10px; height:10px; border-radius:50%; background:#d97706; flex-shrink:0;"></div>
+          <div>
+            <strong style="font-size:0.9rem; color:#92400e;">Polar H9 Disconnected / Simulation Paused</strong>
+            <p style="font-size:0.78rem; color:#b45309; margin-top:2px;">Video recording is currently paused. Please
+              connect the Polar H9 strap or start the simulator.</p>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-shrink:0;">
+          <button id="btn-reconnect-ble-alert" class="btn-verify-tp"
+            style="font-size:0.78rem; padding:6px 12px; background:#d97706; white-space:nowrap;">
+            Connect Polar H9
+          </button>
+          <button id="btn-switch-sim-ble-alert" class="btn-dismiss-fp"
+            style="font-size:0.78rem; padding:6px 12px; background:#ffffff; color:#b45309; border:1px solid #f59e0b; font-weight:600; white-space:nowrap;">
+            Start Simulation
+          </button>
+        </div>
+      </div>
+
+      <div class="studio-grid">
+
+        <!-- Left: Live Webcam & Motion Tracker Viewport -->
+        <div class="studio-webcam-card" id="studio-main-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <h3 style="font-size:1.05rem; font-weight:700; color:var(--text-primary);">In-Browser Head Movement &
+                Video Telemetry</h3>
+              <p style="font-size:0.78rem; color:var(--text-muted);">Real-time facial landmark optical velocity tracking
+                running client-side</p>
+            </div>
+            <span id="studio-state-badge" class="meta-pill" style="font-weight:600;">Ready to Connect</span>
+          </div>
+
+          <div class="studio-webcam-viewport" id="studio-webcam-viewport">
+            <span id="pip-live-badge" class="pip-live-badge" style="display:none;">LIVE NOSE TRACKER</span>
+            <video id="studio-webcam-video" playsinline muted autoplay></video>
+            <canvas id="studio-tracking-canvas"></canvas>
+
+            <!-- 5-Minute Baseline Calibration Overlay -->
+            <div id="studio-calibration-overlay" class="studio-calibration-overlay" style="display:none;">
+              <div
+                style="width:36px; height:36px; border-radius:50%; background:rgba(2, 132, 199, 0.2); border:2px solid #38bdf8; display:flex; align-items:center; justify-content:center; color:#38bdf8; font-weight:700; font-size:0.85rem;">
+                CAL</div>
+              <h3 style="font-size:1.3rem; font-weight:700; color:#ffffff; margin-top:8px;">Quiet Resting Baseline
+                Protocol</h3>
+              <p style="font-size:0.85rem; color:#cbd5e1; max-width:440px; margin-top:4px;">
+                Please sit comfortably and look forward at the screen with your eyes open. We are calculating your
+                resting median baseline RMSSD over 60s windows.
+              </p>
+
+              <div id="studio-calib-timer" class="studio-calib-timer-display">05:00</div>
+
+              <div class="studio-progress-track">
+                <div id="studio-calib-progress-bar" class="studio-progress-fill"></div>
+              </div>
+
+              <button id="btn-studio-finalize-calib" class="btn-verify-tp"
+                style="margin-top:16px; font-size:0.8rem; padding:8px 16px; background:#0284c7;">
+                Finalize Baseline Now (Test Override)
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Tracking Bottom Bar -->
+          <div id="studio-active-banner"
+            style="display:none; margin-top:14px; padding:12px 16px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="width:8px; height:8px; border-radius:50%; background:#059669; display:inline-block;"></span>
+              <span style="font-size:0.85rem; font-weight:600; color:#065f46;">
+                Active Head Oscillation Tracker Running (10s rolling video buffer armed)
+              </span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="btn-studio-test-nod" class="btn-review-clip"
+                style="background:#e11d48; color:white; border:none; padding:6px 12px; font-size:0.78rem;">
+                Trigger Test Oscillation
+              </button>
+              <button id="btn-studio-end-banner" class="btn-dismiss-fp"
+                style="background:#ffffff; color:#e11d48; border:1px solid #fecdd3; padding:6px 12px; font-size:0.78rem; font-weight:600;">
+                End Session
+              </button>
+            </div>
+          </div>
+
+          <!-- Clinical Neuro-Cognitive Stress Protocol Panel -->
+          <div class="clinical-stress-panel" id="clinical-stress-panel" style="margin-top:16px;">
+            <div class="stress-panel-header">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div>
+                  <h3
+                    style="font-size:1.02rem; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                    Neuro-Cognitive Stress Protocol
+                    <span id="stress-phase-badge" class="status-pill status-pending"
+                      style="font-size:0.7rem; padding:2px 8px;">Phase 2: Ready</span>
+                  </h3>
+                  <p style="font-size:0.78rem; color:var(--text-muted);">
+                    Gold-standard autonomic arousal induction to evaluate nystagmus worsening & sympathetic vagal
+                    withdrawal
+                  </p>
+                </div>
+              </div>
+
+              <!-- Timer Display -->
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div id="stress-timer-pill" class="stress-timer-pill"
+                  style="display:none; font-family:'JetBrains Mono',monospace;">
+                  Timer: <span id="stress-test-timer-display">01:00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 1. Start View (Pre-Test Protocol Prompt) -->
+            <div id="stress-test-start-view" class="stress-view-container">
+              <div class="stress-intro-card">
+                <div class="stress-intro-body">
+                  <div>
+                    <h4 style="font-size:0.95rem; font-weight:700; color:var(--text-primary);">
+                      Standardized Cognitive Conflict Challenge (Stroop Vagal Suppression)
+                    </h4>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px; line-height:1.45;">
+                      Sit in front of the webcam. Color words will appear rapidly. Identify the <strong>INK
+                        COLOR</strong> of the word, ignoring what the text reads. The computer vision pipeline
+                      continuously tracks your facial landmarks and involuntary head oscillations under acute
+                      cognitive stress.
+                    </p>
+                    <div class="stress-controls-hint">
+                      <span><strong>Hotkeys:</strong> [1] Red • [2] Blue • [3] Green • [4] Yellow &nbsp;|&nbsp;
+                        <strong>Click buttons</strong></span>
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:10px; margin-top:12px; justify-content:flex-end;">
+                    <button id="btn-start-stress-test" class="btn-verify-tp"
+                      style="background:#0284c7; padding:9px 18px; font-size:0.82rem; font-weight:600;">
+                      Begin 60s Neuro-Cognitive Stress Test
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Active Test View (Live Stimulus Card & Rapid Controls) -->
+            <div id="stress-test-active-view" class="stress-view-container" style="display:none;">
+              <div class="stress-active-grid">
+
+                <!-- Stimulus Main Card -->
+                <div id="stress-stimulus-display-card" class="stress-stimulus-card">
+                  <div
+                    style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:6px;">
+                    <span id="stress-feedback-pill" class="stress-feedback-badge"></span>
+                    <span
+                      style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono); font-weight:600;">ADAPTIVE
+                      PACING ACTIVE</span>
+                  </div>
+
+                  <div id="stress-stimulus-word" class="stress-stimulus-text">
+                    BLUE
+                  </div>
+
+                  <div id="stress-stimulus-subtext" class="stress-stimulus-helper">
+                    Executive Conflict — Identify the INK COLOR!
+                  </div>
+
+                  <!-- Stimulus Countdown Progress Bar -->
+                  <div class="stress-progress-track">
+                    <div id="stress-stimulus-progress-fill" class="stress-progress-fill"></div>
+                  </div>
+
+                  <!-- Color Response Choices (Pads) -->
+                  <div id="stress-choices-container" class="stress-choices-grid">
+                    <!-- Injected dynamically via StressTestEngine -->
+                  </div>
+                </div>
+
+                <!-- Live Test Telemetry & Metrics Strip -->
+                <div class="stress-live-metrics-strip">
+                  <div class="stress-metric-card">
+                    <span class="stress-metric-label">Accuracy Rate</span>
+                    <span id="stress-metric-accuracy" class="stress-metric-val" style="color:#059669;">100%</span>
+                  </div>
+                  <div class="stress-metric-card">
+                    <span class="stress-metric-label">Current Streak</span>
+                    <span id="stress-metric-streak" class="stress-metric-val" style="color:#0284c7;">0 (Streak)</span>
+                  </div>
+                  <div class="stress-metric-card">
+                    <span class="stress-metric-label">Mean Reaction</span>
+                    <span id="stress-metric-rt" class="stress-metric-val" style="color:#8b5cf6;">— ms</span>
+                  </div>
+                  <div class="stress-metric-card">
+                    <span class="stress-metric-label">Trials Completed</span>
+                    <span id="stress-metric-completed" class="stress-metric-val" style="color:#475569;">0 items</span>
+                  </div>
+                  <div style="margin-top:auto; display:flex; gap:8px;">
+                    <button id="btn-stop-stress-test" class="btn-dismiss-fp"
+                      style="width:100%; font-size:0.75rem; padding:6px; background:#fff1f2; color:#e11d48; border:1px solid #fecdd3;">
+                      Abort Test
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- 3. Completed Summary Card -->
+            <div id="stress-test-completed-view" class="stress-view-container" style="display:none;">
+              <div class="stress-summary-card">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                  <div
+                    style="width:32px; height:32px; border-radius:6px; background:#e0f2fe; color:#0284c7; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem;">
+                    DATA</div>
+                  <div>
+                    <h4 style="font-size:0.95rem; font-weight:700; color:var(--text-primary);">
+                      Cognitive Stress Protocol Assessment Completed
+                    </h4>
+                    <p style="font-size:0.78rem; color:var(--text-muted);">
+                      Trial performance and autonomic sympathetic response recorded to patient session profile
+                    </p>
+                  </div>
+                </div>
+
+                <div class="stress-summary-metrics-grid">
+                  <div class="stress-summary-tile">
+                    <span class="tile-label">Test Accuracy</span>
+                    <strong id="summary-stress-accuracy" class="tile-val" style="color:#059669;">92%</strong>
+                  </div>
+                  <div class="stress-summary-tile">
+                    <span class="tile-label">Mean Reaction Time</span>
+                    <strong id="summary-stress-rt" class="tile-val" style="color:#0284c7;">540 ms</strong>
+                  </div>
+                  <div class="stress-summary-tile">
+                    <span class="tile-label">Best Streak</span>
+                    <strong id="summary-stress-max-streak" class="tile-val" style="color:#8b5cf6;">14 in a row</strong>
+                  </div>
+                  <div class="stress-summary-tile">
+                    <span class="tile-label">Autonomic Vagal Response</span>
+                    <strong id="summary-stress-vagal-drop" class="tile-val" style="color:#e11d48;">-42% RMSSD
+                      Drop</strong>
+                  </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+                  <button id="btn-restart-stress-test" class="btn-verify-tp"
+                    style="background:#0284c7; font-size:0.8rem; padding:8px 16px;">
+                    Repeat Stress Test Protocol
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div> <!-- /.clinical-stress-panel -->
+
+        </div> <!-- /.studio-webcam-card -->
+
+        <!-- Right: Bluetooth Hardware & Live Telemetry Controls -->
+        <div class="studio-side-panel">
+
+          <!-- Bluetooth Hardware Card -->
+          <div class="studio-telemetry-box">
+            <h4 style="font-size:0.95rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">
+              Polar H9 Bluetooth Device
+            </h4>
+            <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:12px;" id="studio-ble-status">
+              <strong>Status:</strong> Disconnected
+            </div>
+
+            <button id="btn-studio-ble-connect" class="btn-verify-tp"
+              style="width:100%; justify-content:center; display:flex; align-items:center; gap:6px; padding:10px;">
+              Connect Polar H9 via Web Bluetooth
+            </button>
+            <button id="btn-studio-sim-ble" class="btn-dismiss-fp"
+              style="width:100%; margin-top:8px; font-size:0.82rem; text-align:center; padding:9px 12px; font-weight:600; transition:all 0.2s ease;">
+              Start Simulated Bluetooth Stream (Testing)
+            </button>
+          </div>
+
+          <!-- Live Session Telemetry Panel -->
+          <div class="studio-telemetry-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <h4 style="font-size:0.95rem; font-weight:700; color:var(--text-primary);">
+                Live Physiological Stream
+              </h4>
+              <span id="studio-hud-telemetry-pill" class="status-pill status-pending"
+                style="font-size:0.7rem; padding:2px 8px;">Waiting</span>
+            </div>
+
+            <div class="telemetry-item-row">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">Current Heart Rate</span>
+              <span id="studio-hud-bpm"
+                style="font-family:'JetBrains Mono'; font-weight:700; color:#e11d48; font-size:1.15rem;">— BPM</span>
+            </div>
+
+            <div class="telemetry-item-row">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">Session Resting Baseline</span>
+              <span id="studio-hud-baseline"
+                style="font-family:'JetBrains Mono'; font-weight:700; color:#059669; font-size:1.15rem;">44.5 ms</span>
+            </div>
+
+            <div class="telemetry-item-row">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">Live 60s Window RMSSD</span>
+              <span id="studio-hud-live-rmssd"
+                style="font-family:'JetBrains Mono'; font-weight:700; color:var(--clinical-blue); font-size:1.15rem;">—
+                ms</span>
+            </div>
+
+            <div class="telemetry-item-row">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">Collected R-R Samples</span>
+              <span id="studio-hud-samples"
+                style="font-family:'JetBrains Mono'; font-weight:600; color:var(--text-primary);">0 beats</span>
+            </div>
+
+            <div class="telemetry-item-row">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">Video Buffer Status</span>
+              <span id="studio-hud-buffer-status"
+                style="font-family:'JetBrains Mono'; font-size:0.75rem; font-weight:600; color:#64748b;">Paused
+                (Telemetry Required)</span>
+            </div>
+          </div>
+
+          <!-- Clinical Protocol Summary Card -->
+          <div class="studio-telemetry-box" style="background:#f8fafc; border-style:dashed;">
+            <h5
+              style="font-size:0.8rem; font-weight:700; color:var(--text-primary); text-transform:uppercase; margin-bottom:6px;">
+              Worldwide Clinical Trial Protocol
+            </h5>
+            <ol style="font-size:0.78rem; color:var(--text-secondary); padding-left:16px; line-height:1.55;">
+              <li>Connect Polar H9 strap or start simulation.</li>
+              <li>Sit quietly for initial 5-minute baseline.</li>
+              <li>When head nod occurs, 10s video is saved.</li>
+              <li>Videos are protected only with active telemetry.</li>
+            </ol>
+          </div>
+
+        </div> <!-- /.studio-side-panel -->
+
+      </div> <!-- /.studio-grid -->
+
+    </div> <!-- /.patient-studio-view -->
+
+  </div> <!-- /.app-container -->
+
+  <!-- Patient Registration Modal -->
+  <div id="register-patient-modal-backdrop" class="modal-backdrop">
+    <div class="registration-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Register New Patient Account</h3>
+          <p style="font-size:0.78rem; color:var(--text-muted);">Enter patient clinical details to initiate baseline
+            session</p>
+        </div>
+        <button id="btn-close-register-modal" class="btn-close-modal" type="button"
+          onclick="closeRegisterPatientModal()" title="Close dialog" aria-label="Close">&times;</button>
+      </div>
+
+      <form id="register-patient-form" class="registration-form-body">
+        <div class="form-group">
+          <label for="new-patient-name">Patient Full Name *</label>
+          <input type="text" id="new-patient-name" class="form-input" placeholder="e.g., Alex Morgan" required>
+        </div>
+
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label for="new-patient-age">Age (Years) *</label>
+            <input type="number" id="new-patient-age" class="form-input" placeholder="e.g., 24" min="1" max="120"
+              required>
+          </div>
+
+          <div class="form-group">
+            <label for="new-patient-gender">Gender *</label>
+            <select id="new-patient-gender" class="form-select" required>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Non-Binary">Non-Binary</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="new-patient-diagnosis">Diagnosis / Condition *</label>
+          <select id="new-patient-diagnosis" class="form-select" required>
+            <option value="Infantile Nystagmus Syndrome (INS)">Infantile Nystagmus Syndrome (INS)</option>
+            <option value="Acquired Oscillopsia (Vestibular)">Acquired Oscillopsia (Vestibular)</option>
+            <option value="Pediatric Jerk Nystagmus">Pediatric Jerk Nystagmus</option>
+            <option value="Downbeat Nystagmus">Downbeat Nystagmus</option>
+            <option value="Congenital Nystagmus">Congenital Nystagmus</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="new-session-name">Initial Session Name</label>
+          <input type="text" id="new-session-name" class="form-input"
+            placeholder="Session 1 — Initial Baseline Calibration" value="Session 1 — Initial Baseline Calibration">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+          <button type="button" id="btn-cancel-register" class="btn-dismiss-fp"
+            style="color:var(--text-secondary); border-color:var(--border-color);"
+            onclick="closeRegisterPatientModal()">Cancel</button>
+          <button type="submit" class="btn-verify-tp" style="background:var(--clinical-blue);">Create Patient & Start
+            Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Start New Recording Session Modal (For Existing Patient) -->
+  <div id="start-session-modal-backdrop" class="modal-backdrop">
+    <div class="registration-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Start New Recording Session</h3>
+          <p style="font-size:0.78rem; color:var(--text-muted);">Initiates a new 5-minute quiet resting baseline and
+            active tracking</p>
+        </div>
+        <button id="btn-close-start-session-modal" class="btn-close-modal" type="button"
+          onclick="closeStartSessionModal()" title="Close dialog" aria-label="Close">&times;</button>
+      </div>
+
+      <form id="start-session-form" class="registration-form-body">
+        <div class="form-group">
+          <label>Active Patient Profile</label>
+          <input type="text" id="session-patient-name-preview" class="form-input" readonly
+            style="background:#f1f5f9; font-weight:600;">
+        </div>
+
+        <div class="form-group">
+          <label for="new-recording-session-name">Session Name / Scenario Description *</label>
+          <input type="text" id="new-recording-session-name" class="form-input"
+            placeholder="e.g., Session 4 — Afternoon Multitasking Trial" required>
+        </div>
+
+        <div
+          style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:10px 12px; font-size:0.78rem; color:#065f46;">
+          <strong>Protocol:</strong> Submitting will create the session and begin the 5-minute quiet resting baseline
+          calculation.
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+          <button type="button" id="btn-cancel-start-session" class="btn-dismiss-fp"
+            style="color:var(--text-secondary); border-color:var(--border-color);"
+            onclick="closeStartSessionModal()">Cancel</button>
+          <button type="submit" class="btn-verify-tp" style="background:var(--clinical-blue);">Begin Session & 5-Min
+            Calibration</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- End Session Summary Modal -->
+  <div id="end-session-modal-backdrop" class="modal-backdrop">
+    <div class="registration-modal-card" style="max-width:480px;">
+      <div class="modal-header">
+        <div>
+          <h3 style="display:flex; align-items:center; gap:8px;">
+            Clinical Session Completed
+          </h3>
+          <p style="font-size:0.78rem; color:var(--text-muted);" id="end-session-subtitle">Session data finalized and
+            synced to EHR</p>
+        </div>
+        <button id="btn-close-end-session-modal" class="btn-close-modal" type="button" onclick="closeEndSessionModal()"
+          title="Close dialog" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="registration-form-body">
+        <div
+          style="background:#f8fafc; border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:0.8rem; color:var(--text-secondary);">Session Name:</span>
+            <strong style="font-size:0.85rem; color:var(--text-primary);" id="end-session-name-val">—</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:0.8rem; color:var(--text-secondary);">Calibrated Resting Baseline:</span>
+            <strong style="font-size:0.85rem; color:#059669; font-family:'JetBrains Mono';"
+              id="end-session-baseline-val">44.5 ms</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:0.8rem; color:var(--text-secondary);">Oscillations Captured:</span>
+            <strong style="font-size:0.85rem; color:#e11d48; font-family:'JetBrains Mono';"
+              id="end-session-events-val">0 episodes</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="font-size:0.8rem; color:var(--text-secondary);">Sync Status:</span>
+            <span class="status-pill status-tp" style="font-size:0.75rem;">Saved to EHR & LocalStorage</span>
+          </div>
+        </div>
+
+        <p style="font-size:0.8rem; color:var(--text-secondary); line-height:1.5; margin-bottom:16px;">
+          This clinical trial recording session is now complete and locked. You can review your completed trial
+          telemetry or start the next recording session.
+        </p>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+          <button type="button" id="btn-modal-return-home" class="btn-dismiss-fp"
+            style="color:var(--text-primary); border:1px solid var(--border-color); background:#ffffff; font-size:0.82rem; font-weight:600; padding:8px 16px; cursor:pointer;"
+            onclick="closeEndSessionModal()">
+            Return to Studio
+          </button>
+          <button type="button" id="btn-modal-start-next-session" class="btn-verify-tp"
+            style="background:var(--clinical-blue); font-size:0.82rem; font-weight:600; padding:8px 16px; cursor:pointer;"
+            onclick="handleModalStartNextSession()">
+            + Start Next Session
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telemetry Required Modal (When starting a session without active Polar strap / simulation) -->
+  <div id="telemetry-required-session-modal-backdrop" class="modal-backdrop">
+    <div class="registration-modal-card" style="max-width:500px;">
+      <div class="modal-header" style="background:#0f172a; color:#ffffff; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #334155;">
+        <div>
+          <h3 style="margin:0; font-size:1.05rem; font-weight:700; color:#ffffff;">Telemetry Device Required</h3>
+          <p style="margin:3px 0 0 0; font-size:0.75rem; color:#94a3b8;">Decentralized Clinical Protocol Pre-requisite</p>
+        </div>
+        <button id="btn-close-telemetry-required-modal" class="btn-close-modal" type="button" onclick="closeTelemetryRequiredModal()"
+          title="Close dialog" aria-label="Close" style="color:#94a3b8; font-size:1.4rem;">&times;</button>
+      </div>
+
+      <div class="registration-form-body" style="padding:22px 24px;">
+        <div style="background:#fff1f2; border:1.5px solid #fecdd3; border-radius:8px; padding:14px 16px; margin-bottom:18px;">
+          <div style="display:flex; align-items:flex-start; gap:10px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#e11d48; margin-top:4px; flex-shrink:0;"></span>
+            <div>
+              <strong style="font-size:0.86rem; color:#9f1239; display:block;">No Active Heart Rate Telemetry Stream</strong>
+              <p style="font-size:0.8rem; color:#be123c; margin-top:4px; line-height:1.45;">
+                In accordance with decentralized clinical trial protocol, you can only start a recording session when you have connected your <strong>Polar H9 chest strap</strong> via Web Bluetooth or started the <strong>Simulated Stream</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:16px;">
+          Please connect your Polar H9 chest strap or activate the simulated stream to begin:
+        </p>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button type="button" id="btn-modal-connect-ble" class="btn-verify-tp"
+            style="background:#059669; padding:10px 16px; font-size:0.85rem; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;"
+            onclick="handleTelemetryPromptConnectBle()">
+            Connect Polar H9 via Web Bluetooth
+          </button>
+          <button type="button" id="btn-modal-start-sim" class="btn-verify-tp"
+            style="background:#0284c7; padding:10px 16px; font-size:0.85rem; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;"
+            onclick="handleTelemetryPromptStartSim()">
+            Start Simulated Bluetooth Stream (Testing Mode)
+          </button>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+          <button type="button" class="btn-dismiss-fp"
+            style="color:var(--text-secondary); border-color:var(--border-color); font-size:0.8rem; padding:6px 14px;"
+            onclick="closeTelemetryRequiredModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Modules -->
+  <script src="js/auth_manager.js"></script>
+  <script src="js/sample_data.js"></script>
+  <script src="js/stress_test_engine.js"></script>
+  <script src="js/web_tracker.js"></script>
+  <script src="js/patient_app.js"></script>
+
+</body>
+
+</html>
